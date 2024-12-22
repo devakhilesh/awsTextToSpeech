@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Text-to-Speech Service</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .container {
+      background-color: #ffffff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      max-width: 500px;
+      width: 100%;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+    }
+
+    label {
+      margin-bottom: 8px;
+    }
+
+    textarea, select {
+      padding: 8px;
+      margin-bottom: 16px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    button {
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      padding: 10px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    #audio-container {
+      margin-top: 20px;
+      display: none;
+    }
+
+    #audio-message {
+      margin-top: 10px;
+    }
+
+    .ssml-options {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Text-to-Speech Service</h1>
+    <form id="tts-form">
+      <label for="text">Text:</label>
+      <textarea id="text" required></textarea>
+
+      <!-- SSML Toggle Option -->
+      <label for="ssml-toggle">Use SSML?</label>
+      <input type="checkbox" id="ssml-toggle">
+
+      <!-- SSML Features -->
+      <div class="ssml-options">
+        <label for="rate">Speech Rate (100 to 400):</label>
+        <input type="number" id="rate" min="100" max="400" value="200">
+
+        <label for="pitch">Pitch (range: -20% to 20%):</label>
+        <input type="number" id="pitch" min="-20" max="20" value="0">
+
+        <label for="volume">Volume (range: -100 to 100):</label>
+        <input type="number" id="volume" min="-100" max="100" value="0">
+      </div>
+
+      <label for="engine">Engine Type:</label>
+      <select id="engine" required>
+        <option value="standard">Standard</option>
+        <option value="neural">Neural</option>
+      </select>
+
+      <label for="language">Select Language:</label>
+      <select id="language" required>
+        <option value="">-- Select a language --</option>
+      </select>
+
+      <label for="voice">Select Voice:</label>
+      <select id="voice" required>
+        <option value="">-- Select a voice --</option>
+      </select>
+
+      <button type="submit">Generate Audio</button>
+    </form>
+
+    <div id="audio-container">
+      <audio id="audio" controls></audio>
+      <p id="audio-message"></p>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const ttsForm = document.getElementById("tts-form");
+      const engineSelect = document.getElementById("engine");
+      const languageSelect = document.getElementById("language");
+      const voiceSelect = document.getElementById("voice");
+      const audioElement = document.getElementById("audio");
+      const audioMessage = document.getElementById("audio-message");
+      const audioContainer = document.getElementById("audio-container");
+      const ssmlToggle = document.getElementById("ssml-toggle");
+      const ssmlOptions = document.querySelector(".ssml-options");
+      const rateInput = document.getElementById("rate");
+      const pitchInput = document.getElementById("pitch");
+      const volumeInput = document.getElementById("volume");
+
+      // Language data from the API response
+      const languages = {
+        neural: [
+          "fr-BE", "en-US", "tr-TR", "cs-CZ", "de-CH", "es-US", "sv-SE", "pt-PT", "pt-BR", 
+          "pl-PL", "nl-BE", "nl-NL", "nb-NO", "ko-KR", "ja-JP", "it-IT", "fr-FR", "fr-CA", 
+          "es-MX", "es-ES", "en-NZ", "en-ZA", "en-GB", "en-AU", "de-DE", "da-DK", "cmn-CN", 
+          "ar-AE", "ca-ES", "de-AT", "en-IN", "yue-CN", "fi-FI", "en-IE"
+        ],
+        standard: [
+          "en-US", "es-US", "tr-TR", "sv-SE", "ru-RU", "ro-RO", "pt-PT", "pt-BR", "pl-PL", 
+          "nl-NL", "nb-NO", "ko-KR", "ja-JP", "it-IT", "is-IS", "fr-FR", "fr-CA", "es-MX", 
+          "es-ES", "en-GB-WLS", "en-IN", "en-GB", "en-AU", "de-DE", "da-DK", "cy-GB", 
+          "cmn-CN", "arb"
+        ]
+      };
+
+      // Fetch voices based on language and engine type
+      async function fetchVoices(languageCode, engineType) {
+        try {
+          const response = await fetch(`/voices?languageCode=${languageCode}&engineType=${engineType}`);
+          const data = await response.json();
+          const voices = data.voices;
+
+          // Reset the voice dropdown
+          voiceSelect.innerHTML = '<option value="">-- Select a voice --</option>';
+
+          voices.forEach(voice => {
+            const option = document.createElement("option");
+            option.value = voice.Id;
+            option.textContent = voice.Name;
+            voiceSelect.appendChild(option);
+          });
+        } catch (err) {
+          console.error("Error fetching voices:", err);
+        }
+      }
+
+      // Update the language dropdown based on the engine selection
+      function updateLanguages(engineType) {
+        // Clear current language options
+        languageSelect.innerHTML = '<option value="">-- Select a language --</option>';
+
+        // Add languages based on the engine type
+        const availableLanguages = languages[engineType];
+
+        availableLanguages.forEach(lang => {
+          const option = document.createElement("option");
+          option.value = lang;
+          option.textContent = lang;
+          languageSelect.appendChild(option);
+        });
+      }
+
+      // Handle engine type change
+      engineSelect.addEventListener("change", () => {
+        const engineType = engineSelect.value;
+        updateLanguages(engineType); // Update language options based on selected engine
+      });
+
+      // Handle language change and fetch voices
+      languageSelect.addEventListener("change", () => {
+        const languageCode = languageSelect.value;
+        const engineType = engineSelect.value;
+        if (languageCode && engineType) {
+          fetchVoices(languageCode, engineType); // Fetch voices based on language and engine
+        }
+      });
+
+      // Handle SSML toggle change
+      ssmlToggle.addEventListener("change", () => {
+        if (ssmlToggle.checked) {
+          ssmlOptions.style.display = "block";
+        } else {
+          ssmlOptions.style.display = "none";
+        }
+      });
+
+      // Handle form submission to generate audio
+      async function generateAudio(e) {
+    e.preventDefault();
+
+    const text = document.getElementById("text").value;
+    const voiceId = voiceSelect.value;
+    const engineType = engineSelect.value;
+
+    // SSML feature customization
+    let ssmlText = text;
+    if (ssmlToggle.checked) {
+      const rate = rateInput.value;
+      const pitch = pitchInput.value;
+      const volume = volumeInput.value;
+
+      // Wrap the text in SSML only if SSML is enabled
+      ssmlText = `<speak><prosody rate="${rate}%" pitch="${pitch}%" volume="${volume}%">${text}</prosody></speak>`;
+    }
+
+    if (!text || !voiceId || !engineType) {
+      alert("Please fill all the fields.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/ttsSSML", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: ssmlText, voiceId, engine: engineType, isSSML: ssmlToggle.checked }),
+      });
+      const data = await response.json();
+
+      if (data.status) {
+        const audioUrl = data.data.audioData.url;
+        audioElement.src = audioUrl;
+        audioMessage.textContent = "Audio generated successfully!";
+        audioContainer.style.display = "block";
+      } else {
+        audioMessage.textContent = "Error: " + data.message;
+      }
+    } catch (err) {
+      console.error("Error generating audio:", err);
+      audioMessage.textContent = "Error generating audio.";
+    }
+  }
+
+  ttsForm.addEventListener("submit", generateAudio);
+      updateLanguages(engineSelect.value); // Initialize languages for default engine
+    });
+  </script>
+</body>
+</html>
